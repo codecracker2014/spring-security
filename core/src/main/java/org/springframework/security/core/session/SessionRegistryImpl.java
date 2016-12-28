@@ -40,149 +40,161 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * @author Luke Taylor
  */
 public class SessionRegistryImpl implements SessionRegistry,
-		ApplicationListener<SessionDestroyedEvent> {
+        ApplicationListener<SessionDestroyedEvent> {
 
-	// ~ Instance fields
-	// ================================================================================================
+    // ~ Instance fields
+    // ================================================================================================
 
-	protected final Log logger = LogFactory.getLog(SessionRegistryImpl.class);
+    protected final Log logger = LogFactory.getLog(SessionRegistryImpl.class);
 
-	/** <principal:Object,SessionIdSet> */
-	private final ConcurrentMap<Object, Set<String>> principals = new ConcurrentHashMap<Object, Set<String>>();
-	/** <sessionId:Object,SessionInformation> */
-	private final Map<String, SessionInformation> sessionIds = new ConcurrentHashMap<String, SessionInformation>();
+    /** <principal:Object,SessionIdSet> */
+    private final ConcurrentMap<Object, Set<String>> principals;
+    /** <sessionId:Object,SessionInformation> */
+    private final Map<String, SessionInformation> sessionIds;
 
-	// ~ Methods
-	// ========================================================================================================
+    public SessionRegistryImpl()
+    {
+        this.principals = new ConcurrentHashMap<Object, Set<String>>();
+        sessionIds = new ConcurrentHashMap<String, SessionInformation>();
+    }
+    public SessionRegistryImpl(ConcurrentMap<Object, Set<String>> principals,Map<String, SessionInformation> sessionIds)
+    {
+        this.principals=principals;
+        this.sessionIds=sessionIds;
+    }
 
-	public List<Object> getAllPrincipals() {
-		return new ArrayList<Object>(principals.keySet());
-	}
 
-	public List<SessionInformation> getAllSessions(Object principal,
-			boolean includeExpiredSessions) {
-		final Set<String> sessionsUsedByPrincipal = principals.get(principal);
+    // ~ Methods
+    // ========================================================================================================
 
-		if (sessionsUsedByPrincipal == null) {
-			return Collections.emptyList();
-		}
+    public List<Object> getAllPrincipals() {
+        return new ArrayList<Object>(principals.keySet());
+    }
 
-		List<SessionInformation> list = new ArrayList<SessionInformation>(
-				sessionsUsedByPrincipal.size());
+    public List<SessionInformation> getAllSessions(Object principal,
+            boolean includeExpiredSessions) {
+        final Set<String> sessionsUsedByPrincipal = principals.get(principal);
 
-		for (String sessionId : sessionsUsedByPrincipal) {
-			SessionInformation sessionInformation = getSessionInformation(sessionId);
+        if (sessionsUsedByPrincipal == null) {
+            return Collections.emptyList();
+        }
 
-			if (sessionInformation == null) {
-				continue;
-			}
+        List<SessionInformation> list = new ArrayList<SessionInformation>(
+                sessionsUsedByPrincipal.size());
 
-			if (includeExpiredSessions || !sessionInformation.isExpired()) {
-				list.add(sessionInformation);
-			}
-		}
+        for (String sessionId : sessionsUsedByPrincipal) {
+            SessionInformation sessionInformation = getSessionInformation(sessionId);
 
-		return list;
-	}
+            if (sessionInformation == null) {
+                continue;
+            }
 
-	public SessionInformation getSessionInformation(String sessionId) {
-		Assert.hasText(sessionId, "SessionId required as per interface contract");
+            if (includeExpiredSessions || !sessionInformation.isExpired()) {
+                list.add(sessionInformation);
+            }
+        }
 
-		return sessionIds.get(sessionId);
-	}
+        return list;
+    }
 
-	public void onApplicationEvent(SessionDestroyedEvent event) {
-		String sessionId = event.getId();
-		removeSessionInformation(sessionId);
-	}
+    public SessionInformation getSessionInformation(String sessionId) {
+        Assert.hasText(sessionId, "SessionId required as per interface contract");
 
-	public void refreshLastRequest(String sessionId) {
-		Assert.hasText(sessionId, "SessionId required as per interface contract");
+        return sessionIds.get(sessionId);
+    }
 
-		SessionInformation info = getSessionInformation(sessionId);
+    public void onApplicationEvent(SessionDestroyedEvent event) {
+        String sessionId = event.getId();
+        removeSessionInformation(sessionId);
+    }
 
-		if (info != null) {
-			info.refreshLastRequest();
-		}
-	}
+    public void refreshLastRequest(String sessionId) {
+        Assert.hasText(sessionId, "SessionId required as per interface contract");
 
-	public void registerNewSession(String sessionId, Object principal) {
-		Assert.hasText(sessionId, "SessionId required as per interface contract");
-		Assert.notNull(principal, "Principal required as per interface contract");
+        SessionInformation info = getSessionInformation(sessionId);
 
-		if (logger.isDebugEnabled()) {
-			logger.debug("Registering session " + sessionId + ", for principal "
-					+ principal);
-		}
+        if (info != null) {
+            info.refreshLastRequest();
+        }
+    }
 
-		if (getSessionInformation(sessionId) != null) {
-			removeSessionInformation(sessionId);
-		}
+    public void registerNewSession(String sessionId, Object principal) {
+        Assert.hasText(sessionId, "SessionId required as per interface contract");
+        Assert.notNull(principal, "Principal required as per interface contract");
 
-		sessionIds.put(sessionId,
-				new SessionInformation(principal, sessionId, new Date()));
+        if (logger.isDebugEnabled()) {
+            logger.debug("Registering session " + sessionId + ", for principal "
+                    + principal);
+        }
 
-		Set<String> sessionsUsedByPrincipal = principals.get(principal);
+        if (getSessionInformation(sessionId) != null) {
+            removeSessionInformation(sessionId);
+        }
 
-		if (sessionsUsedByPrincipal == null) {
-			sessionsUsedByPrincipal = new CopyOnWriteArraySet<String>();
-			Set<String> prevSessionsUsedByPrincipal = principals.putIfAbsent(principal,
-					sessionsUsedByPrincipal);
-			if (prevSessionsUsedByPrincipal != null) {
-				sessionsUsedByPrincipal = prevSessionsUsedByPrincipal;
-			}
-		}
+        sessionIds.put(sessionId,
+                new SessionInformation(principal, sessionId, new Date()));
 
-		sessionsUsedByPrincipal.add(sessionId);
+        Set<String> sessionsUsedByPrincipal = principals.get(principal);
 
-		if (logger.isTraceEnabled()) {
-			logger.trace("Sessions used by '" + principal + "' : "
-					+ sessionsUsedByPrincipal);
-		}
-	}
+        if (sessionsUsedByPrincipal == null) {
+            sessionsUsedByPrincipal = new CopyOnWriteArraySet<String>();
+            Set<String> prevSessionsUsedByPrincipal = principals.putIfAbsent(principal,
+                    sessionsUsedByPrincipal);
+            if (prevSessionsUsedByPrincipal != null) {
+                sessionsUsedByPrincipal = prevSessionsUsedByPrincipal;
+            }
+        }
 
-	public void removeSessionInformation(String sessionId) {
-		Assert.hasText(sessionId, "SessionId required as per interface contract");
+        sessionsUsedByPrincipal.add(sessionId);
 
-		SessionInformation info = getSessionInformation(sessionId);
+        if (logger.isTraceEnabled()) {
+            logger.trace("Sessions used by '" + principal + "' : "
+                    + sessionsUsedByPrincipal);
+        }
+    }
 
-		if (info == null) {
-			return;
-		}
+    public void removeSessionInformation(String sessionId) {
+        Assert.hasText(sessionId, "SessionId required as per interface contract");
 
-		if (logger.isTraceEnabled()) {
-			logger.debug("Removing session " + sessionId
-					+ " from set of registered sessions");
-		}
+        SessionInformation info = getSessionInformation(sessionId);
 
-		sessionIds.remove(sessionId);
+        if (info == null) {
+            return;
+        }
 
-		Set<String> sessionsUsedByPrincipal = principals.get(info.getPrincipal());
+        if (logger.isTraceEnabled()) {
+            logger.debug("Removing session " + sessionId
+                    + " from set of registered sessions");
+        }
 
-		if (sessionsUsedByPrincipal == null) {
-			return;
-		}
+        sessionIds.remove(sessionId);
 
-		if (logger.isDebugEnabled()) {
-			logger.debug("Removing session " + sessionId
-					+ " from principal's set of registered sessions");
-		}
+        Set<String> sessionsUsedByPrincipal = principals.get(info.getPrincipal());
 
-		sessionsUsedByPrincipal.remove(sessionId);
+        if (sessionsUsedByPrincipal == null) {
+            return;
+        }
 
-		if (sessionsUsedByPrincipal.isEmpty()) {
-			// No need to keep object in principals Map anymore
-			if (logger.isDebugEnabled()) {
-				logger.debug("Removing principal " + info.getPrincipal()
-						+ " from registry");
-			}
-			principals.remove(info.getPrincipal());
-		}
+        if (logger.isDebugEnabled()) {
+            logger.debug("Removing session " + sessionId
+                    + " from principal's set of registered sessions");
+        }
 
-		if (logger.isTraceEnabled()) {
-			logger.trace("Sessions used by '" + info.getPrincipal() + "' : "
-					+ sessionsUsedByPrincipal);
-		}
-	}
+        sessionsUsedByPrincipal.remove(sessionId);
+
+        if (sessionsUsedByPrincipal.isEmpty()) {
+            // No need to keep object in principals Map anymore
+            if (logger.isDebugEnabled()) {
+                logger.debug("Removing principal " + info.getPrincipal()
+                        + " from registry");
+            }
+            principals.remove(info.getPrincipal());
+        }
+
+        if (logger.isTraceEnabled()) {
+            logger.trace("Sessions used by '" + info.getPrincipal() + "' : "
+                    + sessionsUsedByPrincipal);
+        }
+    }
 
 }
